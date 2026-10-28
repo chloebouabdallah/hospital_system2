@@ -1,0 +1,56 @@
+.pg-head {
+  margin-bottom: 26px;
+}
+
+.pg-head h1 {
+  font-family: var(--font-head);
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  margin: 0 0 4px;
+}
+
+.pg-sub {
+  color: var(--mut);
+  font-size: 15px;
+  margin: 0;
+}
+
+.pg-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.pg-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 22px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.pg-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px #7b5cf01a;
+  border-color: var(--p);
+}
+
+.pg-card-icon {
+  font-size: 32px;
+  margin-bottom: 10px;
+}
+
+.pg-card h3 {
+  font-family: var(--font-head);
+  font-size: 17px;
+  margin: 0 0 6px;
+}
+
+.pg-card p {
+  color: var(--mut);
+  font-size: 14px;
+  line-height: 1.5;
+  margin: 0;
+}

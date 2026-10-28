@@ -1,0 +1,312 @@
+/* =========================================================
+   Dashboard layout — violet gradient sidebar, responsive drawer
+   ========================================================= */
+
+.dl-shell {
+  display: grid;
+  grid-template-columns: 240px 1fr;
+  min-height: 100vh;
+}
+
+/* ---------- Sidebar (desktop) ---------- */
+.dl-side {
+  background: var(--grad);
+  color: #fff;
+  padding: 22px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.dl-side::-webkit-scrollbar {
+  display: none;
+}
+
+/* Sidebar head — brand + close button */
+.dl-side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.dl-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-head);
+  font-weight: 800;
+  font-size: 20px;
+  text-decoration: none;
+  color: #fff;
+  padding: 4px 8px;
+}
+
+.dl-brand svg path {
+  stroke: #fff;
+}
+
+/* Close (×) button — only shown on mobile */
+.dl-side-close {
+  display: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid #ffffff33;
+  background: #ffffff1a;
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.dl-side-close:hover {
+  background: #ffffff2e;
+}
+
+.dl-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.dl-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  color: #ffffffcc;
+  font-weight: 500;
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+
+.dl-link:hover {
+  background: #ffffff1f;
+  color: #fff;
+}
+
+.dl-link.is-active {
+  background: #fff;
+  color: var(--v);
+  font-weight: 700;
+  box-shadow: 0 6px 16px #00000022;
+}
+
+.dl-link-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: inherit;
+}
+
+.dl-side-foot {
+  border-top: 1px solid #ffffff33;
+  padding-top: 16px;
+}
+
+.dl-role {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #ffffffb3;
+  margin: 0 0 4px;
+}
+
+.dl-name {
+  font-weight: 600;
+  font-size: 14px;
+  margin: 0 0 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #fff;
+}
+
+.dl-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: #ffffff2e;
+  color: #fff;
+}
+
+/* ---------- Main column ---------- */
+.dl-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg);
+  min-width: 0;
+}
+
+/* Topbar — restores spacing so buttons aren't jammed to the edges */
+.dl-top {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 14px 26px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  gap: 10px;
+}
+
+.dl-top-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dl-menu-toggle {
+  display: none;
+}
+
+.dl-overlay {
+  display: none;
+}
+
+.dl-content {
+  padding: 26px 26px 60px;
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  min-width: 0;
+  min-width: 0;
+}
+
+/* =========================================================
+   Mobile / tablet — sidebar becomes a drawer
+   ========================================================= */
+@media (max-width: 960px) {
+  .dl-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .dl-side {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 30;
+    width: min(290px, 84vw);
+    height: 100vh;
+    height: 100dvh;
+    padding: 22px 16px;
+    gap: 22px;
+    overflow-x: hidden;
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform 0.22s ease, visibility 0.22s;
+    box-shadow: 16px 0 40px #00000024;
+  }
+
+  .dl-side.is-open {
+    transform: translateX(0);
+    visibility: visible;
+  }
+
+  .dl-side-close {
+    display: inline-flex;
+  }
+
+  .dl-nav {
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .dl-link span:not(.dl-link-icon) {
+    display: inline;
+  }
+
+  .dl-side-foot {
+    display: block;
+  }
+
+  .dl-overlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    border: 0;
+    padding: 0;
+    background: #0e1a3380;
+    cursor: pointer;
+    backdrop-filter: blur(2px);
+  }
+
+  /* Mobile topbar: toggle on the left, actions on the right */
+  .dl-top {
+    justify-content: space-between;
+    padding: 12px 16px;
+  }
+
+  .dl-menu-toggle {
+    width: 42px;
+    height: 42px;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    background: var(--card);
+    color: var(--ink);
+    cursor: pointer;
+    z-index: 15;
+  }
+
+  .dl-menu-toggle span {
+    width: 18px;
+    height: 2px;
+    border-radius: 2px;
+    background: currentColor;
+    transition: transform 0.18s ease, opacity 0.18s ease;
+  }
+
+  .dl-menu-toggle span.is-open:first-child {
+    transform: translateY(7px) rotate(45deg);
+  }
+
+  .dl-menu-toggle span.is-open:nth-child(2) {
+    opacity: 0;
+  }
+
+  .dl-menu-toggle span.is-open:last-child {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+
+  .dl-content {
+    padding: 20px 18px 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dl-side,
+  .dl-menu-toggle span {
+    transition: none;
+  }
+}

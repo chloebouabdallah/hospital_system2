@@ -1,0 +1,109 @@
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #0e1a3380;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 100;
+  backdrop-filter: blur(3px);
+}
+
+.modal {
+  background: var(--card);
+  border-radius: 18px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 30px 60px #00000030;
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--line);
+}
+.modal-head h2 {
+  font-family: var(--font-head);
+  font-size: 18px;
+  margin: 0;
+}
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--mut);
+  cursor: pointer;
+  padding: 0 4px;
+}
+.modal-close:hover { color: var(--ink); }
+
+.modal-body {
+  padding: 22px 24px 24px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.form-group select,
+.form-group input[type='date'] {
+  width: 100%;
+  padding: 11px 14px;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  outline: none;
+  font-family: inherit;
+}
+.form-group select:focus,
+.form-group input[type='date']:focus {
+  border-color: var(--p);
+  box-shadow: 0 0 0 3px #008cfd22;
+}
+
+.modal-hint {
+  font-size: 13px;
+  color: var(--mut);
+  margin: 4px 0 0;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+.slot-btn {
+  padding: 9px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.slot-btn:hover { border-color: var(--p); }
+.slot-btn.is-active {
+  background: var(--grad);
+  color: #fff;
+  border-color: transparent;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}

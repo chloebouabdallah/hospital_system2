@@ -271,3 +271,21 @@ model UrgencyBookingRule {
 
   @@map("urgency_booking_rules")
 }
+
+/// AI-generated checker content (questions / assessments). Doubles as the admin review queue.
+/// status: pending (served, awaiting review) | approved (served) | rejected (never served)
+model AiCheckerCache {
+  id          Int       @id @default(autoincrement())
+  cacheKey    String    @unique @map("cache_key") @db.VarChar(64)
+  kind        String    @db.VarChar(20)
+  symptomText String    @map("symptom_text") @db.VarChar(300)
+  payload     Json
+  status      String    @default("pending") @db.VarChar(20)
+  hits        Int       @default(0)
+  createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
+  reviewedAt  DateTime? @map("reviewed_at") @db.Timestamp(6)
+
+  @@index([kind, status], map: "idx_ai_cache_kind_status")
+  @@map("ai_checker_cache")
+}

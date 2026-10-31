@@ -122,6 +122,7 @@ const NAV = {
     { to: '/dashboard/questions', label: 'Questions', Icon: Icon.Question },
     { to: '/dashboard/conditions', label: 'Conditions', Icon: Icon.Book },
     { to: '/dashboard/rules', label: 'Triage rules', Icon: Icon.Cog },
+    { to: '/dashboard/ai-review', label: 'AI review', Icon: Icon.Sparkle },
     { to: '/dashboard/reviews', label: 'Reviews', Icon: Icon.Star },
     { to: '/dashboard/users', label: 'Users', Icon: Icon.Users },
   ],

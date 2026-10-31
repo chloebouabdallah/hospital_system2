@@ -19,6 +19,7 @@ import AdminUsers from './pages/admin/AdminUsers';
 import AdminQuestions from './pages/admin/AdminQuestions';
 import AdminConditions from './pages/admin/AdminConditions';
 import AdminTriageRules from './pages/admin/AdminTriageRules';
+import AdminAiReview from './pages/admin/AdminAiReview';
 
 import SymptomChecker from './pages/patient/SymptomChecker';
 import FindDoctors from './pages/patient/FindDoctors';
@@ -69,6 +70,7 @@ export default function App() {
             <Route path="questions" element={<AdminQuestions />} />
             <Route path="conditions" element={<AdminConditions />} />
             <Route path="rules" element={<AdminTriageRules />} />
+            <Route path="ai-review" element={<AdminAiReview />} />
 
             {/* Shared, role-aware — decided inside each component */}
             <Route path="appointments" element={<Appointments />} />

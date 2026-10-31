@@ -22,6 +22,7 @@ const adminRoutes = require('./routes/admin.routes');
 const patientRoutes = require('./routes/patient.routes');
 const urgencyRoutes = require('./routes/urgency-booking-rules.routes');
 const doctorDashboardRoutes = require('./routes/doctor-dashboard.routes');
+const aiReviewRoutes = require('./routes/ai-review.routes');
 
 const app = express();
 
@@ -61,6 +62,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/patient', patientRoutes);
 app.use('/api/doctor', doctorDashboardRoutes);
 app.use('/api/urgency-booking-rules', urgencyRoutes);
+app.use('/api/ai-review', aiReviewRoutes);
 
 // Error handler (from Day 6) — put after all routes, before listen.
 app.use((err, req, res, next) => {

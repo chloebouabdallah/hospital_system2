@@ -154,6 +154,10 @@ deleteOption: (id) => request(`/symptom-question-options/${id}`, { method: 'DELE
 getSymptoms: () => request('/symptoms'),
 getSymptomQuestions: (symptomId) => request(`/symptoms/${symptomId}/questions`),
 submitChecker: (payload) => request('/symptom-checker/submit', { method: 'POST', body: payload }),
+  aiCheckerStep: (payload) => request('/symptom-checker/ai/step', { method: 'POST', body: payload }),
+  getAiReview: (params = '') => request(`/ai-review${params}`),
+  setAiReviewStatus: (id, status) => request(`/ai-review/${id}`, { method: 'PATCH', body: { status } }),
+  deleteAiReviewItem: (id) => request(`/ai-review/${id}`, { method: 'DELETE' }),
 getHospitalsNearby: (params) => request(`/hospitals/nearby?${params}`),
 
 // ---------- Patient ----------

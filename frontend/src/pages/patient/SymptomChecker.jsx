@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { api } from '../../api/client';
 
-// ---------- Inline line icons (no emoji) ----------
 const Icon = {
   Head: () => (
     <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -352,110 +351,180 @@ const CSS = `
 }
 
 .sc-loading { padding: 60px; text-align: center; color: var(--mut); }
+
+/* Free-text symptom entry */
+.sc-textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  box-sizing: border-box;
+}
+.sc-textarea:focus { outline: none; border-color: var(--v); box-shadow: 0 0 0 3px #7b5cf022; }
+.sc-hint { color: var(--mut); font-size: 12.5px; margin: 8px 0 0; display: flex; justify-content: space-between; gap: 12px; }
+.sc-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.sc-chip {
+  padding: 7px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.sc-chip:hover { border-color: var(--v); background: var(--soft); }
+.sc-chips-label { color: var(--mut); font-size: 12.5px; margin: 20px 0 0; }
+
+/* One-question-at-a-time */
+.sc-progress { height: 6px; border-radius: 999px; background: var(--soft); overflow: hidden; margin: 0 0 22px; }
+.sc-progress > span { display: block; height: 100%; background: var(--grad); border-radius: 999px; transition: width 0.3s; }
+.sc-q-meta { color: var(--mut); font-size: 12.5px; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+.sc-q-big { font-family: var(--font-head); font-size: 20px; line-height: 1.35; margin: 0 0 6px; }
+.sc-q-help { color: var(--mut); font-size: 13px; margin: 0 0 18px; }
+.sc-asked { color: var(--mut); font-size: 13px; margin: 0 0 18px; padding: 12px 14px; background: var(--soft); border-radius: 12px; }
+.sc-thinking { padding: 40px 0; text-align: center; color: var(--mut); }
+
+/* Result extras */
+.sc-flags { margin: 10px 0 0; padding-left: 18px; font-size: 13.5px; }
+.sc-advice { font-size: 14.5px; line-height: 1.65; color: var(--ink); margin: 0; }
+.sc-top {
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #7b5cf010, #a78bfa08);
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+.sc-top-label { font-size: 11.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--v); margin: 0 0 6px; }
+.sc-top h2 { font-family: var(--font-head); font-size: 22px; margin: 0 0 8px; }
+.sc-top p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.6; }
+.sc-top-warn { font-size: 12.5px; color: var(--mut); margin: 0; }
+.sc-why { font-size: 13.5px; color: var(--ink); }
+.sc-ai-note { font-size: 12px; color: var(--mut); margin: 0; }
+.sc-cond-likely { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--mut); }
 `;
 
 export default function SymptomChecker() {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const [symptoms, setSymptoms] = useState([]);
-  const [symptom, setSymptom] = useState(null);
-  const [questions, setQuestions] = useState([]);
-  const [answers, setAnswers] = useState({});
+  const [quick, setQuick] = useState([]);       // quick-pick chips (existing symptoms list)
+  const [text, setText] = useState('');         // free-text symptom
+  const [history, setHistory] = useState([]);   // answered questions so far
+  const [current, setCurrent] = useState(null); // question being shown
+  const [selected, setSelected] = useState([]); // option values picked for the current question
+  const [progress, setProgress] = useState({ answered: 0, max: 7 });
   const [result, setResult] = useState(null);
 
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
-  const step = result ? 3 : symptom ? 2 : 1;
+  const step = result ? 3 : current ? 2 : 1;
 
-  // Load symptoms once
+  // Quick-pick chips + deep link (?symptomId=) just prefill the text box.
   useEffect(() => {
     api.getSymptoms()
       .then((r) => {
         const list = r.symptoms || [];
-        setSymptoms(list);
-
-        const initialId = Number(searchParams.get('symptomId'));
-        if (initialId && list.some((s) => s.id === initialId)) {
-          const s = list.find((x) => x.id === initialId);
-          setSymptom(s);
-        }
+        setQuick(list);
+        const id = Number(searchParams.get('symptomId'));
+        const hit = id && list.find((x) => x.id === id);
+        if (hit) setText((t) => t || hit.name);
       })
-      .catch((err) => setError(err.data?.error || 'Could not load symptoms.'))
-      .finally(() => setLoading(false));
+      .catch(() => {}); // chips are optional
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load questions whenever symptom changes
-  useEffect(() => {
-    if (!symptom) return;
-    setAnswers({});
-    setResult(null);
+  // Ask the server for the next step given a (symptom, history) pair.
+  async function advance(symptom, answers) {
+    setBusy(true);
     setError('');
-    api.getSymptomQuestions(symptom.id)
-      .then((r) => setQuestions(r.questions || []))
-      .catch((err) => setError(err.data?.error || 'Could not load questions.'));
-  }, [symptom]);
-
-  function pickSymptom(s) {
-    setSymptom(s);
-    setSearchParams({ symptomId: s.id });
+    try {
+      const res = await api.aiCheckerStep({ symptom, answers });
+      if (res.type === 'question') {
+        setCurrent(res.question);
+        setProgress(res.progress || { answered: answers.length, max: 7 });
+        setSelected([]);
+        setResult(null);
+      } else {
+        setCurrent(null);
+        setResult(res.result);
+      }
+      setHistory(answers);
+    } catch (err) {
+      setError(err.data?.error || 'Could not reach the checker. Please try again.');
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function backToSymptoms() {
-    setSymptom(null);
-    setQuestions([]);
-    setAnswers({});
+  function start() {
+    const symptom = text.trim();
+    if (symptom.length < 2) {
+      setError('Please describe your symptom first.');
+      return;
+    }
+    advance(symptom, []);
+  }
+
+  function toggle(option) {
+    if (!current) return;
+    if (current.type === 'single') {
+      setSelected([option.value]);
+      return;
+    }
+    // "None of these" is exclusive in multi-choice questions.
+    const isNone = /^none\b|^no$|^لا$/i.test(option.text.trim());
+    setSelected((prev) => {
+      if (isNone) return prev.includes(option.value) ? [] : [option.value];
+      const withoutNone = prev.filter((v) => {
+        const o = current.options.find((x) => x.value === v);
+        return !(o && /^none\b/i.test(o.text.trim()));
+      });
+      return withoutNone.includes(option.value)
+        ? withoutNone.filter((v) => v !== option.value)
+        : [...withoutNone, option.value];
+    });
+  }
+
+  function next() {
+    if (selected.length === 0) {
+      setError('Please choose an answer to continue.');
+      return;
+    }
+    const values = current.options
+      .filter((o) => selected.includes(o.value))
+      .map((o) => ({ value: o.value, text: o.text }));
+    advance(text.trim(), [...history, { question: current.text, type: current.type, values }]);
+  }
+
+  function back() {
+    setError('');
+    if (history.length === 0) {
+      setCurrent(null);
+      return;
+    }
+    // Re-ask the previous question (cached server-side, so this is cheap).
+    advance(text.trim(), history.slice(0, -1));
+  }
+
+  function reset() {
+    setText('');
+    setHistory([]);
+    setCurrent(null);
+    setSelected([]);
     setResult(null);
     setError('');
     setSearchParams({});
   }
 
-  function selectAnswer(question, value) {
-    setAnswers((prev) => {
-      const current = prev[question.id] || [];
-      if (question.questionType === 'single') {
-        return { ...prev, [question.id]: [value] };
-      }
-      return {
-        ...prev,
-        [question.id]: current.includes(value)
-          ? current.filter((v) => v !== value)
-          : [...current, value],
-      };
-    });
-  }
-
-  async function submit() {
-    setError('');
-
-    const missing = questions.filter((q) => !answers[q.id] || answers[q.id].length === 0);
-    if (missing.length > 0) {
-      setError('Please answer all questions before continuing.');
-      return;
-    }
-
-    const payload = {
-      symptom_id: symptom.id,
-      answers: questions.map((q) => ({
-        question_id: q.id,
-        values: answers[q.id],
-      })),
-    };
-
-    setSubmitting(true);
-    try {
-      const res = await api.submitChecker(payload);
-      setResult(res.result);
-    } catch (err) {
-      setError(err.data?.error || 'Could not process your answers.');
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  if (loading) return <div className="sc-loading">Loading…</div>;
+  const pct = Math.min(100, Math.round(((progress.answered + 1) / (progress.max + 1)) * 100));
 
   return (
     <div className="sc-page">
@@ -463,14 +532,14 @@ export default function SymptomChecker() {
 
       <header className="sc-header">
         <h1>Symptom checker</h1>
-        <p className="sc-sub">Answer a few questions to understand what to do next.</p>
+        <p className="sc-sub">Describe what you feel, then answer a few questions tailored to you.</p>
       </header>
 
       {/* Stepper */}
       <div className="sc-stepper">
         <div className={`sc-step ${step === 1 ? 'is-active' : step > 1 ? 'is-done' : ''}`}>
           <span className="sc-step-num">{step > 1 ? '✓' : '1'}</span>
-          <span>Pick a symptom</span>
+          <span>Describe your symptom</span>
         </div>
         <span className="sc-step-arrow">→</span>
         <div className={`sc-step ${step === 2 ? 'is-active' : step > 2 ? 'is-done' : ''}`}>
@@ -484,90 +553,100 @@ export default function SymptomChecker() {
         </div>
       </div>
 
-      {/* STEP 1 — pick symptom */}
+      {/* STEP 1 — free-text symptom */}
       {step === 1 && (
         <div className="sc-card">
           <h2 className="sc-card-title">What's bothering you?</h2>
-          <p className="sc-card-sub">Pick one symptom to start.</p>
-          <div className="sc-sym-grid">
-            {symptoms.map((s) => {
-              const SymIcon = iconFor(s.name);
-              return (
-                <button
-                  key={s.id}
-                  className="sc-sym"
-                  onClick={() => pickSymptom(s)}
-                  type="button"
-                >
-                  <span className="sc-sym-icon" aria-hidden="true">
-                    <SymIcon />
-                  </span>
-                  <span className="sc-sym-name">{s.name}</span>
-                </button>
-              );
-            })}
+          <p className="sc-card-sub">
+            Describe it in your own words, for example "headache for two days with nausea".
+          </p>
+
+          <textarea
+            className="sc-textarea"
+            value={text}
+            maxLength={300}
+            onChange={(e) => { setText(e.target.value); setError(''); }}
+            placeholder="Type your symptom here…"
+            aria-label="Describe your symptom"
+          />
+          <p className="sc-hint">
+            <span>Don't include your name or other personal details.</span>
+            <span>{text.length}/300</span>
+          </p>
+
+          {quick.length > 0 && (
+            <>
+              <p className="sc-chips-label">Or start from a common symptom:</p>
+              <div className="sc-chips">
+                {quick.map((s) => {
+                  const SymIcon = iconFor(s.name);
+                  return (
+                    <button key={s.id} type="button" className="sc-chip" onClick={() => setText(s.name)}>
+                      <span aria-hidden="true" style={{ display: 'inline-flex', verticalAlign: 'middle', marginRight: 6, transform: 'scale(0.75)' }}>
+                        <SymIcon />
+                      </span>
+                      {s.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {error && <p className="sc-error">{error}</p>}
+
+          <div className="sc-actions" style={{ justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary" onClick={start} disabled={busy} type="button">
+              {busy ? 'Thinking…' : 'Continue'}
+            </button>
           </div>
         </div>
       )}
 
-      {/* STEP 2 — answer questions */}
-      {step === 2 && symptom && (
+      {/* STEP 2 — one adaptive question at a time */}
+      {step === 2 && current && (
         <div className="sc-card">
-          <h2 className="sc-card-title">{symptom.name}</h2>
-          <p className="sc-card-sub">
-            Answer each question honestly. You can change answers any time.
+          <div className="sc-progress" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
+          <p className="sc-q-meta">Question {progress.answered + 1}</p>
+          <p className="sc-asked">Your symptom: <b>{text}</b></p>
+
+          <h2 className="sc-q-big">{current.text}</h2>
+          <p className="sc-q-help">
+            {current.type === 'multi' ? 'Select all that apply.' : 'Select one answer.'}
           </p>
 
-          <div className="sc-questions">
-            {questions.map((q, idx) => (
-              <div key={q.id} className="sc-q-block">
-                <p className="sc-q-title">
-                  <span className="sc-q-num">{String(idx + 1).padStart(2, '0')}</span>
-                  {q.questionText}
-                </p>
-                <div className="sc-options">
-                  {q.options.map((o) => {
-                    const selected = (answers[q.id] || []).includes(o.optionValue);
-                    return (
-                      <button
-                        key={o.id}
-                        type="button"
-                        className={`sc-opt${selected ? ' is-selected' : ''}`}
-                        data-multi={q.questionType === 'multi' ? '' : undefined}
-                        onClick={() => selectAnswer(q, o.optionValue)}
-                      >
-                        <span className="sc-opt-marker" />
-                        <span>{o.optionText}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+          <div className="sc-options">
+            {current.options.map((o) => {
+              const isSel = selected.includes(o.value);
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  className={`sc-opt${isSel ? ' is-selected' : ''}`}
+                  data-multi={current.type === 'multi' ? '' : undefined}
+                  onClick={() => { toggle(o); setError(''); }}
+                  disabled={busy}
+                >
+                  <span className="sc-opt-marker" />
+                  <span>{o.text}</span>
+                </button>
+              );
+            })}
           </div>
 
           {error && <p className="sc-error">{error}</p>}
 
           <div className="sc-actions">
-            <button className="btn" onClick={backToSymptoms} type="button">
-              ← Back
-            </button>
-            <button
-              className="btn btn-primary"
-              onClick={submit}
-              disabled={submitting}
-              type="button"
-            >
-              {submitting ? 'Checking…' : 'See result'}
+            <button className="btn" onClick={back} disabled={busy} type="button">← Back</button>
+            <button className="btn btn-primary" onClick={next} disabled={busy} type="button">
+              {busy ? 'Thinking…' : 'Next'}
             </button>
           </div>
         </div>
       )}
 
       {/* STEP 3 — result */}
-      {step === 3 && result && (
-        <ResultView result={result} onReset={backToSymptoms} />
-      )}
+      {step === 3 && result && <ResultView result={result} onReset={reset} />}
     </div>
   );
 }
@@ -603,8 +682,28 @@ function ResultView({ result, onReset }) {
               {result.message || 'We recommend speaking with a doctor.'}
             </p>
           )}
+          {(result.redFlags || []).length > 0 && (
+            <ul className="sc-flags">
+              {result.redFlags.map((f) => <li key={f}>{f}</li>)}
+            </ul>
+          )}
         </div>
       </div>
+
+      {/* Most likely condition (AI result): stated clearly, but framed as a possibility to confirm */}
+      {result.matched && conditions[0] && (
+        <div className="sc-top">
+          <p className="sc-top-label">Most likely based on your answers</p>
+          <h2>{conditions[0].name}</h2>
+          {result.reasoning && <p>{result.reasoning}</p>}
+          <p className="sc-top-warn">
+            This is not a diagnosis. Only a doctor can confirm what is causing your symptoms.
+          </p>
+        </div>
+      )}
+
+      {/* Advice / emergency message (shown under the banner when a result was matched) */}
+      {result.matched && result.message && <p className="sc-advice">{result.message}</p>}
 
       {/* Specialty recommendation */}
       {specialty && (
@@ -630,10 +729,12 @@ function ResultView({ result, onReset }) {
               <article key={c.id} className="sc-cond">
                 <div className="sc-cond-head">
                   <h3>{c.name}</h3>
+                  {c.likelihood && <span className="sc-cond-likely">{c.likelihood}</span>}
                   {c.specialty?.name && (
                     <span className="sc-cond-tag">{c.specialty.name}</span>
                   )}
                 </div>
+                {c.whyItFits && <p className="sc-why"><b>Why it fits:</b> {c.whyItFits}</p>}
                 {c.description && <p>{c.description}</p>}
                 {c.causes && <p><b>Common causes:</b> {c.causes}</p>}
                 {c.whenToSeekCare && <p><b>When to seek care:</b> {c.whenToSeekCare}</p>}
@@ -657,6 +758,13 @@ function ResultView({ result, onReset }) {
             ))}
           </ul>
         </div>
+      )}
+
+      {result.source === 'ai' && (
+        <p className="sc-ai-note">
+          These suggestions are generated by AI and checked against built-in safety rules. Urgency is never
+          lower than what those rules require.
+        </p>
       )}
 
       {/* Disclaimer */}

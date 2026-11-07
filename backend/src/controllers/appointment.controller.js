@@ -4,6 +4,8 @@ const {
   findMatchingAvailability,
   findConflictingAppointment,
 } = require('../services/availability.service');
+const { patientCancelStatus } = require('../services/cancellation.service');
+const { loadWindow, isWithinWindow } = require('../services/booking-policy.service');
 
 const APPT_SELECT = {
   id: true,
@@ -46,6 +48,17 @@ const ALLOWED_TRANSITIONS = {
   cancelled: [],
   completed: [],
 };
+
+// Adds cancellation info the UI needs: { canCancel, cancelDeadline, cancelBlockedMessage }.
+//   - patients: only until the cut-off (see config/booking.js, CANCEL_MIN_HOURS_AHEAD)
+//   - doctors / admins: any time while the appointment is still pending/confirmed
+function withCancelInfo(appt, role) {
+  const open = appt.status === 'pending' || appt.status === 'confirmed';
+  if (!open) return { ...appt, canCancel: false, cancelDeadline: null, cancelBlockedMessage: null };
+  if (role !== 'patient') return { ...appt, canCancel: true, cancelDeadline: null, cancelBlockedMessage: null };
+  const c = patientCancelStatus(appt.dateTime);
+  return { ...appt, canCancel: c.allowed, cancelDeadline: c.deadline, cancelBlockedMessage: c.message };
+}
 
 // Reused by list + get + status changes.
 // Returns the doctor row for a logged-in doctor user, or null.
@@ -104,6 +117,19 @@ async function createAppointment(req, res) {
     if (!doctor) return res.status(400).json({ error: 'doctorId does not match a real doctor.' });
     if (!hospital) return res.status(400).json({ error: 'hospitalId does not match a real hospital.' });
 
+    // If the client says which urgency level this booking is for, enforce that level's window
+    // (earliest / latest bookable time) on the server too, not only in the UI.
+    if (req.user.role === 'patient' && typeof req.body.urgency === 'string') {
+      const win = await loadWindow(req.body.urgency);
+      if (!isWithinWindow(when, win)) {
+        return res.status(400).json({
+          error:
+            `For this priority, appointments must be between ${win.minHoursAhead} hour(s) and ` +
+            `${win.maxDaysAhead} day(s) from now.`,
+        });
+      }
+    }
+
     const block = await findMatchingAvailability({ doctorId, hospitalId, dateTime: when });
     if (!block) {
       return res.status(400).json({ error: 'The doctor is not available at this hospital on this day/time.' });
@@ -126,7 +152,7 @@ async function createAppointment(req, res) {
       select: APPT_SELECT,
     });
 
-    return res.status(201).json({ appointment: appt });
+    return res.status(201).json({ appointment: withCancelInfo(appt, req.user.role) });
   } catch (err) {
     console.error('createAppointment error:', err);
     return res.status(500).json({ error: 'Something went wrong.' });
@@ -168,7 +194,7 @@ async function listAppointments(req, res) {
       select: APPT_SELECT,
       orderBy,
     });
-    return res.status(200).json({ appointments });
+    return res.status(200).json({ appointments: appointments.map((a) => withCancelInfo(a, req.user.role)) });
   } catch (err) {
     console.error('listAppointments error:', err);
     return res.status(500).json({ error: 'Something went wrong.' });
@@ -185,13 +211,13 @@ async function getAppointmentById(req, res) {
     const appt = await prisma.appointment.findUnique({ where: { id }, select: APPT_SELECT });
     if (!appt) return res.status(404).json({ error: 'Appointment not found.' });
 
-    if (req.user.role === 'admin') return res.status(200).json({ appointment: appt });
+    if (req.user.role === 'admin') return res.status(200).json({ appointment: withCancelInfo(appt, 'admin') });
 
     if (req.user.role === 'patient') {
       if (appt.patient.id !== req.user.id) {
         return res.status(403).json({ error: 'You do not have permission to do this.' });
       }
-      return res.status(200).json({ appointment: appt });
+      return res.status(200).json({ appointment: withCancelInfo(appt, 'patient') });
     }
 
     if (req.user.role === 'doctor') {
@@ -199,7 +225,7 @@ async function getAppointmentById(req, res) {
       if (!doctor || doctor.id !== appt.doctor.id) {
         return res.status(403).json({ error: 'You do not have permission to do this.' });
       }
-      return res.status(200).json({ appointment: appt });
+      return res.status(200).json({ appointment: withCancelInfo(appt, 'doctor') });
     }
 
     return res.status(403).json({ error: 'You do not have permission to do this.' });
@@ -247,13 +273,25 @@ async function transitionStatus(req, res, targetStatus) {
     });
   }
 
+  // A patient (acting as the patient, not as admin/doctor) can only cancel up to the cut-off.
+  if (targetStatus === 'cancelled' && isOwningPatient && !isAdmin && !isAssignedDoctor) {
+    const c = patientCancelStatus(appt.dateTime);
+    if (!c.allowed) {
+      return res.status(403).json({
+        error: c.message,
+        code: 'CANCEL_TOO_LATE',
+        cancelDeadline: c.deadline,
+      });
+    }
+  }
+
   const updated = await prisma.appointment.update({
     where: { id },
     data: { status: targetStatus },
     select: APPT_SELECT,
   });
 
-  return res.status(200).json({ appointment: updated });
+  return res.status(200).json({ appointment: withCancelInfo(updated, req.user.role) });
 }
 
 async function cancelAppointment(req, res) {

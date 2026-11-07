@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api } from '../../api/client';
 
 const CSS = `
@@ -144,58 +144,117 @@ const CSS = `
   margin-top: 8px;
 }
 .bm-error { color: #dc2626; font-size: 14px; margin: 0; }
+
+.bm-days {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 2px 2px 8px;
+  margin-top: 8px;
+}
+.bm-day {
+  flex: 0 0 auto;
+  min-width: 78px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  cursor: pointer;
+  text-align: center;
+  font-family: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.bm-day:hover { border-color: var(--v); }
+.bm-day.is-active { background: var(--grad); color: #fff; border-color: transparent; }
+.bm-day-name { display: block; font-size: 12px; font-weight: 700; }
+.bm-day-date { display: block; font-size: 12px; opacity: 0.85; margin-top: 2px; }
+.bm-day-count { display: block; font-size: 11px; opacity: 0.75; margin-top: 2px; }
+.bm-slot-hosp { display: block; font-size: 10.5px; font-weight: 500; opacity: 0.8; margin-top: 2px; }
+.bm-summary { font-size: 13px; color: var(--mut); margin: 10px 0 0; }
 `;
 
-export default function BookingModal({ doctor, preselectedHospitalId, urgency, onClose, onBooked }) {
-  const [policy, setPolicy] = useState(null);
-  const [loadingPolicy, setLoadingPolicy] = useState(true);
+// ---- helpers: group ISO slots by the patient's LOCAL calendar day ----
+const pad = (n) => String(n).padStart(2, '0');
+const localKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
-  const [date, setDate] = useState('');
-  const [hospitalId, setHospitalId] = useState(
-    preselectedHospitalId ?? doctor.hospitals?.[0]?.hospital?.id ?? ''
-  );
+function dayLabel(key, date) {
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  if (key === localKey(today)) return 'Today';
+  if (key === localKey(tomorrow)) return 'Tomorrow';
+  return date.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
+function groupByDay(slots) {
+  const map = new Map();
+  for (const s of slots) {
+    const d = new Date(s.dateTime);
+    const key = localKey(d);
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        name: dayLabel(key, d),
+        date: d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' }),
+        slots: [],
+      });
+    }
+    map.get(key).slots.push(s);
+  }
+  return [...map.values()];
+}
+
+export default function BookingModal({ doctor, preselectedHospitalId, urgency, onClose, onBooked }) {
+  const level = ['urgent', 'moderate', 'low'].includes(urgency) ? urgency : 'no_triage';
+
+  const [hospitalId, setHospitalId] = useState(preselectedHospitalId ?? '');
+  const [policy, setPolicy] = useState(null);
   const [slots, setSlots] = useState([]);
-  const [selectedSlot, setSelectedSlot] = useState('');
-  const [loadingSlots, setLoadingSlots] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [activeDay, setActiveDay] = useState('');
+  const [selectedSlot, setSelectedSlot] = useState(null); // { dateTime, hospitalId }
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Fetch the booking policy for this urgency
+  // Load EVERY free slot inside this urgency's booking window (built from the doctor's schedule)
+  // as soon as the modal opens: no date has to be picked first.
   useEffect(() => {
-    const level = ['urgent', 'moderate', 'low'].includes(urgency) ? urgency : 'no_triage';
+    let cancelled = false;
+    setLoading(true);
+    setLoadError('');
+    setSelectedSlot(null);
+    const qs = new URLSearchParams({ urgency: level });
+    if (hospitalId) qs.set('hospitalId', hospitalId);
     api
-      .getUrgencyBookingRules()
+      .getBookableSlots(doctor.id, `?${qs}`)
       .then((r) => {
-        const rules = r.rules || [];
-        const found = rules.find((x) => x.urgencyLevel === level) || rules.find((x) => x.urgencyLevel === 'no_triage');
-        setPolicy(found || null);
+        if (cancelled) return;
+        setPolicy(r.policy || null);
+        setSlots(r.slots || []);
       })
-      .catch(() => setPolicy(null))
-      .finally(() => setLoadingPolicy(false));
-  }, [urgency]);
+      .catch((err) => {
+        if (cancelled) return;
+        setSlots([]);
+        setLoadError(err.data?.error || 'Could not load available times.');
+      })
+      .finally(() => !cancelled && setLoading(false));
+    return () => { cancelled = true; };
+  }, [doctor.id, hospitalId, level]);
 
-  // Load available slots when date + hospital change
+  const days = useMemo(() => groupByDay(slots), [slots]);
+
+  // Keep a valid day selected (first day with slots by default).
   useEffect(() => {
-    setSlots([]);
-    setSelectedSlot('');
-    if (!date || !hospitalId) return;
-    setLoadingSlots(true);
-    api
-      .getAvailableSlots(doctor.id, date, hospitalId)
-      .then((r) => setSlots(r.slots || []))
-      .catch(() => setSlots([]))
-      .finally(() => setLoadingSlots(false));
-  }, [doctor.id, date, hospitalId]);
+    if (days.length === 0) { setActiveDay(''); return; }
+    if (!days.some((d) => d.key === activeDay)) setActiveDay(days[0].key);
+  }, [days, activeDay]);
 
-  // Filter slots by the policy's time window
-  const now = Date.now();
-  const visibleSlots = slots.filter((iso) => {
-    if (!policy) return true;
-    const t = new Date(iso).getTime();
-    const minTime = now + (policy.minHoursAhead || 0) * 60 * 60 * 1000;
-    const maxTime = now + (policy.maxDaysAhead || 30) * 24 * 60 * 60 * 1000;
-    return t >= minTime && t <= maxTime;
-  });
+  const hospitals = doctor.hospitals || [];
+  const hospitalName = (id) => hospitals.find((h) => h.hospital?.id === id)?.hospital?.name;
+  const showHospitalOnSlots = !hospitalId && new Set(slots.map((s) => s.hospitalId)).size > 1;
+  const currentDay = days.find((d) => d.key === activeDay);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -208,8 +267,9 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
     try {
       await api.createAppointment({
         doctorId: doctor.id,
-        hospitalId: Number(hospitalId),
-        dateTime: selectedSlot,
+        hospitalId: Number(selectedSlot.hospitalId),
+        dateTime: selectedSlot.dateTime,
+        urgency: level,
       });
       onBooked();
     } catch (err) {
@@ -219,7 +279,6 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
     }
   }
 
-  const hospitals = doctor.hospitals || [];
   const policyClass = policy
     ? `bm-policy-${policy.urgencyLevel === 'no_triage' ? 'default' : policy.urgencyLevel}`
     : 'bm-policy-default';
@@ -245,7 +304,7 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
           </div>
 
           {/* Policy banner */}
-          {!loadingPolicy && policy && (
+          {policy && (
             <div className={`bm-policy ${policyClass}`}>
               <p className="bm-policy-title">
                 {policy.urgencyLevel === 'urgent' && 'Urgent'}
@@ -253,75 +312,95 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
                 {policy.urgencyLevel === 'low' && 'Low priority'}
                 {policy.urgencyLevel === 'no_triage' && 'Standard booking'}
               </p>
-              <p className="bm-policy-msg">{policy.message}</p>
+              {policy.message && <p className="bm-policy-msg">{policy.message}</p>}
+            </div>
+          )}
+
+          {hospitals.length > 1 && (
+            <div>
+              <label className="bm-label">Hospital</label>
+              <select
+                className="bm-select"
+                value={hospitalId}
+                onChange={(e) => setHospitalId(e.target.value ? Number(e.target.value) : '')}
+              >
+                <option value="">All locations</option>
+                {hospitals.map((h) => (
+                  <option key={h.hospital?.id} value={h.hospital?.id}>
+                    {h.hospital?.name}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 
           <div>
-            <label className="bm-label">Hospital</label>
-            <select
-              className="bm-select"
-              value={hospitalId}
-              onChange={(e) => setHospitalId(e.target.value)}
-              required
-            >
-              <option value="">Select a hospital…</option>
-              {hospitals.map((h) => (
-                <option key={h.hospital?.id} value={h.hospital?.id}>
-                  {h.hospital?.name}
-                </option>
-              ))}
-            </select>
-          </div>
+            <label className="bm-label">Available days and times</label>
 
-          <div>
-            <label className="bm-label">Date</label>
-            <input
-              type="date"
-              className="bm-input"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              required
-            />
-            {policy && (
+            {loading && <p className="bm-hint">Loading available times…</p>}
+            {!loading && loadError && <p className="bm-error">{loadError}</p>}
+
+            {!loading && !loadError && days.length === 0 && (
               <p className="bm-hint">
-                {policy.minHoursAhead > 0
-                  ? `Earliest bookable: ${policy.minHoursAhead}h from now.`
-                  : 'Same-day booking allowed.'}
-                {' '}Latest: {policy.maxDaysAhead} day{policy.maxDaysAhead === 1 ? '' : 's'} ahead.
+                No free slots{policy ? ` in the next ${policy.maxDaysAhead} day${policy.maxDaysAhead === 1 ? '' : 's'}` : ''}
+                {policy?.minHoursAhead > 0 ? ` (bookings must be at least ${policy.minHoursAhead}h ahead)` : ''}.
+                {' '}This doctor may have no schedule for that period
+                {hospitals.length > 1 && !hospitalId ? '' : ' at this location'}. Try another doctor or location.
               </p>
             )}
-          </div>
 
-          <div>
-            <label className="bm-label">Available slots</label>
-            {loadingSlots && <p className="bm-hint">Loading slots…</p>}
-            {!loadingSlots && date && visibleSlots.length === 0 && (
-              <p className="bm-hint">
-                {slots.length === 0
-                  ? 'No slots that day. Try another date.'
-                  : 'No slots within your booking window. Try a different date.'}
-              </p>
-            )}
-            {!loadingSlots && !date && (
-              <p className="bm-hint">Pick a date to see free slots.</p>
-            )}
-            {!loadingSlots && visibleSlots.length > 0 && (
-              <div className="bm-slots">
-                {visibleSlots.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    className={`bm-slot${selectedSlot === s ? ' is-selected' : ''}`}
-                    onClick={() => setSelectedSlot(s)}
-                  >
-                    {new Date(s).toLocaleTimeString(undefined, {
-                      hour: '2-digit',
-                      minute: '2-digit',
+            {!loading && days.length > 0 && (
+              <>
+                <div className="bm-days" role="tablist" aria-label="Available days">
+                  {days.map((d) => (
+                    <button
+                      key={d.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={d.key === activeDay}
+                      className={`bm-day${d.key === activeDay ? ' is-active' : ''}`}
+                      onClick={() => { setActiveDay(d.key); setSelectedSlot(null); }}
+                    >
+                      <span className="bm-day-name">{d.name}</span>
+                      <span className="bm-day-date">{d.date}</span>
+                      <span className="bm-day-count">{d.slots.length} slot{d.slots.length === 1 ? '' : 's'}</span>
+                    </button>
+                  ))}
+                </div>
+
+                {currentDay && (
+                  <div className="bm-slots">
+                    {currentDay.slots.map((s) => {
+                      const isSel = selectedSlot?.dateTime === s.dateTime && selectedSlot?.hospitalId === s.hospitalId;
+                      return (
+                        <button
+                          key={`${s.dateTime}-${s.hospitalId}`}
+                          type="button"
+                          className={`bm-slot${isSel ? ' is-selected' : ''}`}
+                          onClick={() => setSelectedSlot(s)}
+                        >
+                          {new Date(s.dateTime).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                          {showHospitalOnSlots && (
+                            <span className="bm-slot-hosp">{hospitalName(s.hospitalId) || ''}</span>
+                          )}
+                        </button>
+                      );
                     })}
-                  </button>
-                ))}
-              </div>
+                  </div>
+                )}
+
+                {selectedSlot && (
+                  <p className="bm-summary">
+                    Selected:{' '}
+                    <b>
+                      {new Date(selectedSlot.dateTime).toLocaleString(undefined, {
+                        weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit',
+                      })}
+                    </b>
+                    {hospitalName(selectedSlot.hospitalId) ? ` · ${hospitalName(selectedSlot.hospitalId)}` : ''}
+                  </p>
+                )}
+              </>
             )}
           </div>
 
@@ -329,7 +408,7 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
 
           <div className="bm-actions">
             <button type="button" className="btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn btn-primary" disabled={submitting}>
+            <button type="submit" className="btn btn-primary" disabled={submitting || !selectedSlot}>
               {submitting ? 'Booking…' : 'Book appointment'}
             </button>
           </div>

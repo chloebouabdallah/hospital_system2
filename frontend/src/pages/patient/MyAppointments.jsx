@@ -345,6 +345,15 @@ export default function MyAppointments() {
   useEffect(() => { load(); }, []);
 
   async function handleCancel(appt) {
+    // Patients can't cancel inside the cut-off (same day / less than 24h before). The server
+    // enforces this too; here we just explain it right away.
+    if (appt.canCancel === false) {
+      alert(
+        appt.cancelBlockedMessage ||
+          "You can't cancel this appointment online. Cancellations must be made at least two days before the appointment date (not on the day before or the same day)."
+      );
+      return;
+    }
     if (!confirm(`Cancel this appointment with ${appt.doctor?.user?.name}?`)) return;
     setBusyId(appt.id);
     try {
@@ -450,13 +459,27 @@ export default function MyAppointments() {
                 {/* Actions */}
                 <div className="ma-card-actions">
                   {(a.status === 'pending' || a.status === 'confirmed') && (
-                    <button
-                      className="btn btn-danger"
-                      disabled={busyId === a.id}
-                      onClick={() => handleCancel(a)}
-                    >
-                      Cancel
-                    </button>
+                    <>
+                      {a.canCancel === false && (
+                        <span style={{ fontSize: 12, color: 'var(--mut)', alignSelf: 'center', marginRight: 8 }}>
+                          Cancellation is closed for this appointment
+                        </span>
+                      )}
+                      {a.canCancel === true && a.cancelDeadline && (
+                        <span style={{ fontSize: 12, color: 'var(--mut)', alignSelf: 'center', marginRight: 8 }}>
+                          Can be cancelled until {new Date(a.cancelDeadline).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+                        </span>
+                      )}
+                      <button
+                        className="btn btn-danger"
+                        style={a.canCancel === false ? { opacity: 0.55 } : undefined}
+                        title={a.canCancel === false ? 'Cancellation is closed for this appointment' : undefined}
+                        disabled={busyId === a.id}
+                        onClick={() => handleCancel(a)}
+                      >
+                        Cancel
+                      </button>
+                    </>
                   )}
                   {a.status === 'completed' && (
                     <button

@@ -10,6 +10,7 @@ const {
   deleteDoctor,
 } = require('../controllers/doctor.controller');
 const { getAvailableSlots } = require('../controllers/availability.controller');
+const { getBookableSlots } = require('../controllers/bookable.controller');
 const { getDoctorReviews } = require('../controllers/review.controller');
 
 // ⚠️ Order matters: literal paths BEFORE parameterized ones.
@@ -55,6 +56,7 @@ router.get('/me', authenticate, async (req, res) => {
 // Public reads
 router.get('/', getAllDoctors);
 router.get('/:id/available-slots', getAvailableSlots);
+router.get('/:id/bookable-slots', getBookableSlots);
 router.get('/:id/reviews', getDoctorReviews);
 router.get('/:id', getDoctorById);
 

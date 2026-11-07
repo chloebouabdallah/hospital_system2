@@ -176,4 +176,11 @@ updateAvailability: (id, payload) => request(`/doctor-availability/${id}`, { met
 deleteAvailability: (id) => request(`/doctor-availability/${id}`, { method: 'DELETE' }),
 
 getUrgencyBookingRules: () => request('/urgency-booking-rules'),
+
+  // ---------- Available slots ----------
+  getAvailableSlots: (doctorId, date, hospitalId) =>
+    request(`/doctors/${doctorId}/available-slots?date=${date}&hospitalId=${hospitalId}`),
+
+  // Add this new line here:
+  getBookableSlots: (doctorId, params = '') => request(`/doctors/${doctorId}/bookable-slots${params}`),
 };

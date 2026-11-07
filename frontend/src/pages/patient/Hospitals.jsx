@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import BookingModal from './BookingModal';
 
@@ -614,8 +615,10 @@ export default function Hospitals() {
                               {(d.name || '?').charAt(0).toUpperCase()}
                             </div>
                             <div className="hp-doc-body">
-                              <p className="hp-doc-name">{d.name}</p>
-                              {d.specialty?.name && (
+                              <Link to={`/dashboard/doctors/${d.id}`} className="hp-doc-name" style={{ textDecoration: 'none' }}>
+                                        {d.name}
+                              </Link>    
+                                          {d.specialty?.name && (
                                 <p className="hp-doc-spec">{d.specialty.name}</p>
                               )}
                               {d.bio && <p className="hp-doc-bio">{d.bio}</p>}

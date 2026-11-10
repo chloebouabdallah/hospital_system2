@@ -19,7 +19,6 @@ const AVAIL_SELECT = {
   hospital: { select: { id: true, name: true, city: true } },
 };
 
-// Parses "HH:MM" into a Date on 1970-01-01 UTC. Returns null if invalid.
 function parseTime(str) {
   if (typeof str !== 'string') return null;
   const m = /^(\d{1,2}):(\d{2})$/.exec(str.trim());
@@ -32,12 +31,10 @@ function parseTime(str) {
   return d;
 }
 
-// Returns the doctor row owned by this user (used for ownership checks), or null.
 async function getOwnDoctor(userId) {
   return prisma.doctor.findUnique({ where: { userId } });
 }
 
-// Admin or the owning doctor.
 async function callerCanManageAvailability(req, doctorId) {
   if (req.user.role === 'admin') return true;
   if (req.user.role !== 'doctor') return false;
@@ -80,6 +77,27 @@ async function createAvailability(req, res) {
     if (!doctor) return res.status(400).json({ error: 'doctorId does not match a real doctor.' });
     if (!hospital) return res.status(400).json({ error: 'hospitalId does not match a real hospital.' });
 
+    // ---- NEW FIX: Check for overlapping schedules on the same day ----
+    const overlappingBlock = await prisma.doctorAvailability.findFirst({
+      where: {
+        doctorId,
+        dayOfWeek,
+        isAvailable: true,
+        AND: [
+          { startTime: { lt: end } }, // existing start < new end
+          { endTime: { gt: start } }, // existing end > new start
+        ],
+      },
+    });
+
+    if (overlappingBlock) {
+      const fmt = (d) => d.toISOString().slice(11, 16);
+      return res.status(409).json({
+        error: `This doctor already has a schedule from ${fmt(overlappingBlock.startTime)} to ${fmt(overlappingBlock.endTime)} on this day. Overlapping schedules are not allowed.`,
+      });
+    }
+    // ---------------------------------------------------------------------
+
     const row = await prisma.doctorAvailability.create({
       data: {
         doctorId,
@@ -100,7 +118,6 @@ async function createAvailability(req, res) {
 }
 
 // ---- GET /doctor-availability (any logged-in role) ----
-// Optional filters: ?doctorId=, ?hospitalId=
 async function listAvailability(req, res) {
   try {
     const where = {};
@@ -235,8 +252,6 @@ async function deleteAvailability(req, res) {
 }
 
 // ---- GET /doctors/:id/available-slots?date=YYYY-MM-DD&hospitalId=N ----
-// Public (or authenticated — pick one; keeping it public since doctors are public).
-// Returns the bookable 45-min slots for that doctor on that date at that hospital.
 async function getAvailableSlots(req, res) {
   try {
     const doctorId = parseInt(req.params.id, 10);

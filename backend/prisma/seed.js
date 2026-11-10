@@ -49,6 +49,17 @@ async function main() {
     ],
   });
 
+    // ---------------- Urgency Booking Rules ----------------
+  await prisma.urgencyBookingRule.createMany({
+    data: [
+      { urgencyLevel: 'urgent', minHoursAhead: 0, maxDaysAhead: 2, radiusKm: 25, message: 'Urgent cases can book within the next 2 days.' },
+      { urgencyLevel: 'moderate', minHoursAhead: 24, maxDaysAhead: 7, radiusKm: 25, message: 'Moderate cases can book starting tomorrow.' },
+      { urgencyLevel: 'low', minHoursAhead: 48, maxDaysAhead: 14, radiusKm: 25, message: 'Low priority cases can book starting in 2 days.' },
+      { urgencyLevel: 'no_triage', minHoursAhead: 24, maxDaysAhead: 7, radiusKm: 25, message: 'Standard appointments can be booked starting tomorrow.' },
+    ],
+    skipDuplicates: true, // Prevents errors if you run the seed twice
+  });
+
   // ---------------- Symptoms + Questions + Options ----------------
   const symptomDefs = [
     {

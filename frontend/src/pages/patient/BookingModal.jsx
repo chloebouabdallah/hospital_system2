@@ -174,7 +174,6 @@ const CSS = `
 .bm-summary { font-size: 13px; color: var(--mut); margin: 10px 0 0; }
 `;
 
-// ---- helpers: group ISO slots by the patient's LOCAL calendar day ----
 const pad = (n) => String(n).padStart(2, '0');
 const localKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
@@ -214,12 +213,10 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [activeDay, setActiveDay] = useState('');
-  const [selectedSlot, setSelectedSlot] = useState(null); // { dateTime, hospitalId }
+  const [selectedSlot, setSelectedSlot] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  // Load EVERY free slot inside this urgency's booking window (built from the doctor's schedule)
-  // as soon as the modal opens: no date has to be picked first.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -245,7 +242,6 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
 
   const days = useMemo(() => groupByDay(slots), [slots]);
 
-  // Keep a valid day selected (first day with slots by default).
   useEffect(() => {
     if (days.length === 0) { setActiveDay(''); return; }
     if (!days.some((d) => d.key === activeDay)) setActiveDay(days[0].key);
@@ -303,7 +299,6 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
             </div>
           </div>
 
-          {/* Policy banner */}
           {policy && (
             <div className={`bm-policy ${policyClass}`}>
               <p className="bm-policy-title">
@@ -342,10 +337,12 @@ export default function BookingModal({ doctor, preselectedHospitalId, urgency, o
 
             {!loading && !loadError && days.length === 0 && (
               <p className="bm-hint">
-                No free slots{policy ? ` in the next ${policy.maxDaysAhead} day${policy.maxDaysAhead === 1 ? '' : 's'}` : ''}
-                {policy?.minHoursAhead > 0 ? ` (bookings must be at least ${policy.minHoursAhead}h ahead)` : ''}.
-                {' '}This doctor may have no schedule for that period
-                {hospitals.length > 1 && !hospitalId ? '' : ' at this location'}. Try another doctor or location.
+                No free slots found.
+                {policy?.urgencyLevel === 'urgent' && ' Urgent cases can book within the next 48 hours.'}
+                {policy?.urgencyLevel === 'moderate' && ' Moderate cases must book at least 24 hours in advance.'}
+                {policy?.urgencyLevel === 'low' && ' Low priority cases must book at least 48 hours in advance.'}
+                {policy?.urgencyLevel === 'no_triage' && ' Standard appointments must be booked at least 24 hours in advance.'}
+                {' '}Try another doctor or location.
               </p>
             )}
 

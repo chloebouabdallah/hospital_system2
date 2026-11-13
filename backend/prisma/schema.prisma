@@ -285,6 +285,8 @@ model AiCheckerCache {
   createdAt   DateTime? @default(now()) @map("created_at") @db.Timestamp(6)
   updatedAt   DateTime? @default(now()) @map("updated_at") @db.Timestamp(6)
   reviewedAt  DateTime? @map("reviewed_at") @db.Timestamp(6)
+  /// { answers: [[question, [values]], ...] } the response was made for (used for approved fallbacks)
+  context     Json?
 
   @@index([kind, status], map: "idx_ai_cache_kind_status")
   @@map("ai_checker_cache")

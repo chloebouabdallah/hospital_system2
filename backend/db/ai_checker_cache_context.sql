@@ -1,0 +1,2 @@
+
+ALTER TABLE ai_checker_cache ADD COLUMN IF NOT EXISTS context JSONB;

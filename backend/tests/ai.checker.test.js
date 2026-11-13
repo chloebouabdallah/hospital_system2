@@ -11,7 +11,7 @@ const SPECIALTIES = [
   { id: 3, name: 'Cardiologist', description: 'cardio' },
 ];
 
-function makeDeps({ llmReplies = [], llmThrows = false, conditions = new Map() } = {}) {
+function makeDeps({ llmReplies = [], llmThrows = false, conditions = new Map(), approved = {} } = {}) {
   const calls = [];
   const store = new Map();
   return {
@@ -29,6 +29,7 @@ function makeDeps({ llmReplies = [], llmThrows = false, conditions = new Map() }
       makeKey: (kind, s, a) => `${kind}|${s}|${a.map((x) => x.question + x.values.map((v) => v.value)).join(',')}`,
       get: async (k) => store.get(k) ?? null,
       set: async (k, _kind, _s, payload) => { store.set(k, payload); },
+      findApproved: async (kind) => approved[kind] ?? null,
     },
     db: {
       loadSpecialties: async () => SPECIALTIES,
@@ -54,37 +55,69 @@ const ASSESSMENT = (over = {}) => ({
 const a = (question, text) => ({ question, type: 'single', values: [{ text, value: text }] });
 const full = Array.from({ length: cfg.MIN_QUESTIONS }, (_, i) => a(`Q${i + 1}?`, 'x'));
 
-describe('runStep: safety first', () => {
-  test('red flag in free text returns URGENT immediately and never calls the AI', async () => {
-    const deps = makeDeps();
+describe('runStep: the AI decides urgency and red flags', () => {
+  test('a keyword hit no longer ends the check: the AI is asked, and the hint is passed on', async () => {
+    const deps = makeDeps({ llmReplies: [ask('Does the pain spread to your arm, jaw or back?')] });
+    const out = await runStep({ symptom: 'chest pain and shortness of breath', answers: [] }, deps);
+    assert.equal(out.type, 'question');
+    assert.equal(deps.calls.length, 1);
+    assert.match(deps.calls[0].user, /Chest pain together with shortness of breath/);
+    assert.doesNotMatch(deps.calls[0].user, /MUST ask another question/); // early finish allowed
+  });
+
+  test('with a hint, the AI may finish early and its confirmed red flag makes the result URGENT', async () => {
+    const deps = makeDeps({
+      llmReplies: [
+        { action: 'finish' },
+        ASSESSMENT({
+          urgency: 'urgent',
+          specialty: 'Cardiologist',
+          conditions: [{ name: 'Angina', likelihood: 'most likely', description: 'd' }],
+          red_flags: [{ flag: 'Chest pain with breathlessness', condition: 'Angina', based_on: 'Said: chest pain and short of breath', action: 'emergency' }],
+        }),
+      ],
+    });
     const out = await runStep({ symptom: 'chest pain and shortness of breath', answers: [] }, deps);
     assert.equal(out.type, 'result');
     assert.equal(out.result.urgencyLevel, 'urgent');
-    assert.equal(deps.calls.length, 0);
     assert.equal(out.result.recommendedSpecialty.name, 'Cardiologist');
-    assert.ok(out.result.redFlags.length > 0);
-    assert.ok(out.result.disclaimer);
+    assert.equal(out.result.redFlags[0].condition, 'Angina');
+    assert.equal(out.result.redFlags[0].basedOn, 'Said: chest pain and short of breath');
+    assert.match(out.result.message, /emergency/i);
+    assert.ok(out.result.aiDisclaimer);
   });
 
-  test('red flag appearing in a later answer stops the flow', async () => {
-    const deps = makeDeps();
-    const out = await runStep({ symptom: 'headache', answers: [a('Any of these?', 'Confusion')] }, deps);
-    assert.equal(out.result.urgencyLevel, 'urgent');
-    assert.equal(deps.calls.length, 0);
-  });
-
-  test('AI saying "low" can NOT lower a rule-based urgent verdict (rules win)', async () => {
-    // assessment path with a red flag in the answers: rules already short-circuit, but also
-    // verify the combine step directly.
+  test('the AI can dismiss a keyword false alarm: its own urgency stands', async () => {
     const { buildResult } = require('../src/services/ai/aiChecker.service');
     const { evaluateRedFlags } = require('../src/services/ai/redflags');
-    const flags = evaluateRedFlags('fever and stiff neck');
-    const assessment = validateAssessment(ASSESSMENT({ urgency: 'low' }));
-    const r = await buildResult({ flags, assessment, specialties: SPECIALTIES, deps: makeDeps() });
-    assert.equal(r.urgencyLevel, 'urgent');
+    const flags = evaluateRedFlags('chest pain when I press on it, and back pain');
+    assert.ok(flags.urgent); // the keyword screen fires on "back"
+    const assessment = validateAssessment(ASSESSMENT({ urgency: 'low', red_flags: [] }));
+    const r = await buildResult({ flags, assessment, source: 'ai', specialties: SPECIALTIES, deps: makeDeps() });
+    assert.equal(r.urgencyLevel, 'low');
+    assert.deepEqual(r.redFlags, []);
   });
 
-  test('AI can RAISE urgency above what the rules found', async () => {
+  test('any AI red flag rules out "low"; an emergency one forces "urgent"', async () => {
+    const { buildResult } = require('../src/services/ai/aiChecker.service');
+    const noFlags = { urgent: false, matches: [] };
+    const visit = validateAssessment(ASSESSMENT({ urgency: 'low', red_flags: [{ flag: 'Fever over 3 days', action: 'urgent_visit' }] }));
+    const emerg = validateAssessment(ASSESSMENT({ urgency: 'moderate', red_flags: [{ flag: 'Stiff neck with fever', action: 'emergency' }] }));
+    const deps = makeDeps();
+    assert.equal((await buildResult({ flags: noFlags, assessment: visit, specialties: SPECIALTIES, deps })).urgencyLevel, 'moderate');
+    assert.equal((await buildResult({ flags: noFlags, assessment: emerg, specialties: SPECIALTIES, deps })).urgencyLevel, 'urgent');
+  });
+
+  test('self-harm always shows the crisis message straight away (no AI call)', async () => {
+    const deps = makeDeps();
+    const out = await runStep({ symptom: 'I want to die', answers: [] }, deps);
+    assert.equal(out.type, 'result');
+    assert.equal(out.result.urgencyLevel, 'urgent');
+    assert.match(out.result.message, /crisis line/);
+    assert.equal(deps.calls.length, 0);
+  });
+
+  test('AI can RAISE urgency', async () => {
     const deps = makeDeps({ llmReplies: [{ action: 'finish' }, ASSESSMENT({ urgency: 'urgent', red_flag_detected: true })] });
     const out = await runStep({ symptom: 'strange pain', answers: full }, deps);
     assert.equal(out.result.urgencyLevel, 'urgent');
@@ -96,12 +129,49 @@ describe('runStep: safety first', () => {
     assert.equal(out.result.urgencyLevel, 'moderate');
   });
 
-  test('confident low stays low', async () => {
+  test('confident low stays low, and the AI disclaimer is attached', async () => {
     const deps = makeDeps({ llmReplies: [{ action: 'finish' }, ASSESSMENT()] });
     const out = await runStep({ symptom: 'mild headache', answers: full }, deps);
     assert.equal(out.result.urgencyLevel, 'low');
     assert.equal(out.result.source, 'ai');
+    assert.equal(out.result.aiGenerated, true);
+    assert.match(out.result.aiDisclaimer, /AI can be wrong/);
     assert.equal(out.result.recommendedSpecialty.name, 'Neurologist');
+  });
+});
+
+describe('runStep: AI unavailable -> admin-approved responses', () => {
+  test('an approved question is used instead of a static one', async () => {
+    const deps = makeDeps({ llmThrows: true, approved: { question: ask('Is the pain throbbing?') } });
+    const out = await runStep({ symptom: 'headache', answers: [] }, deps);
+    assert.equal(out.question.text, 'Is the pain throbbing?');
+    assert.equal(out.ai, true);
+  });
+
+  test('an approved assessment is used, marked "approved"', async () => {
+    const deps = makeDeps({ llmThrows: true, approved: { assessment: ASSESSMENT() } });
+    const out = await runStep({ symptom: 'mild headache', answers: full }, deps);
+    assert.equal(out.result.source, 'approved');
+    assert.equal(out.result.urgencyLevel, 'low');
+    assert.ok(out.result.aiDisclaimer);
+  });
+
+  test('with an approved (not re-checked) result, a keyword hit still raises urgency', async () => {
+    const deps = makeDeps({ llmThrows: true, approved: { assessment: ASSESSMENT() } });
+    const answers = [...full.slice(1), a('Any of these?', 'Confusion')];
+    const out = await runStep({ symptom: 'headache', answers }, deps);
+    assert.equal(out.result.source, 'approved');
+    assert.equal(out.result.urgencyLevel, 'urgent');
+    assert.ok(out.result.redFlags.some((f) => f.source === 'screen'));
+  });
+
+  test('nothing approved + keyword hit -> urgent right away, no static questions', async () => {
+    const deps = makeDeps({ llmThrows: true });
+    const out = await runStep({ symptom: 'chest pain and shortness of breath', answers: [] }, deps);
+    assert.equal(out.type, 'result');
+    assert.equal(out.result.source, 'fallback');
+    assert.equal(out.result.urgencyLevel, 'urgent');
+    assert.equal(out.result.recommendedSpecialty.name, 'Cardiologist');
   });
 });
 

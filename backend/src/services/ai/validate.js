@@ -93,13 +93,27 @@ function validateAssessment(obj) {
     .filter((c) => c.name);
   if (conditions.length === 0) return null;
 
+  // AI-identified warning signs, each tied to a condition and to the answer it is based on.
+  // A missing/unknown "action" is treated as an emergency (the cautious reading).
+  const redFlags = (Array.isArray(obj.red_flags) ? obj.red_flags : [])
+    .slice(0, 6)
+    .map((f) => ({
+      flag: cleanText(typeof f === 'string' ? f : f?.flag, 200),
+      condition: cleanText(f?.condition, 150),
+      basedOn: cleanText(f?.based_on ?? f?.basedOn, 300),
+      action: f?.action === 'urgent_visit' ? 'urgent_visit' : 'emergency',
+    }))
+    .filter((f) => f.flag);
+
   return {
     urgency,
     specialty: cleanText(obj.specialty, 100),
     conditions,
+    redFlags,
     reasoning: cleanText(obj.reasoning, 500),
     advice: cleanText(obj.advice, 600),
-    redFlag: obj.red_flag_detected === true,
+    // Older cached entries only carry the boolean; newer ones carry the list.
+    redFlag: redFlags.length > 0 || obj.red_flag_detected === true,
     confidence: ['low', 'medium', 'high'].includes(obj.confidence) ? obj.confidence : 'low',
   };
 }
